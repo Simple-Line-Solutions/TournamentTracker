@@ -41,6 +41,109 @@ function buildByePositions(seedOrder, byes) {
   return byePositions;
 }
 
+function buildFirstRoundPairs(size, byePositions) {
+  const pairs = [];
+  for (let pos = 0; pos < size; pos += 2) {
+    const pos1 = pos + 1;
+    if (!byePositions.has(pos) && !byePositions.has(pos1)) {
+      pairs.push([pos, pos1]);
+    }
+  }
+  return pairs;
+}
+
+function getEntryForbiddenOpponents(entry) {
+  if (!Array.isArray(entry?.previous_opponents)) return new Set();
+  return new Set(entry.previous_opponents.map((id) => Number(id)).filter((id) => Number.isFinite(id)));
+}
+
+function compareCosts(a, b) {
+  if (a.rematches !== b.rematches) return a.rematches - b.rematches;
+  if (a.sameZone !== b.sameZone) return a.sameZone - b.sameZone;
+  return a.deviation - b.deviation;
+}
+
+function evaluateFirstRoundCost(orderByEntryIdx, entries, baseOrderByEntryIdx, firstRoundPairs) {
+  const entryIdxByPosition = new Map();
+  for (let idx = 0; idx < orderByEntryIdx.length; idx += 1) {
+    const pos = orderByEntryIdx[idx];
+    entryIdxByPosition.set(pos, idx);
+  }
+
+  let rematches = 0;
+  let sameZone = 0;
+
+  for (const [p0, p1] of firstRoundPairs) {
+    const idxA = entryIdxByPosition.get(p0);
+    const idxB = entryIdxByPosition.get(p1);
+    if (idxA == null || idxB == null) continue;
+
+    const entryA = entries[idxA];
+    const entryB = entries[idxB];
+    if (!entryA || !entryB) continue;
+
+    if (entryA.group_id != null && entryB.group_id != null && entryA.group_id === entryB.group_id) {
+      sameZone += 1;
+    }
+
+    const forbidA = getEntryForbiddenOpponents(entryA);
+    const forbidB = getEntryForbiddenOpponents(entryB);
+    const pairA = Number(entryA.pair_id);
+    const pairB = Number(entryB.pair_id);
+    if ((Number.isFinite(pairB) && forbidA.has(pairB)) || (Number.isFinite(pairA) && forbidB.has(pairA))) {
+      rematches += 1;
+    }
+  }
+
+  let deviation = 0;
+  for (let idx = 0; idx < orderByEntryIdx.length; idx += 1) {
+    const basePos = baseOrderByEntryIdx[idx];
+    const currentPos = orderByEntryIdx[idx];
+    if (basePos != null && currentPos != null) {
+      deviation += Math.abs(basePos - currentPos);
+    }
+  }
+
+  return { rematches, sameZone, deviation };
+}
+
+function optimizeFirstRoundOrder(orderByEntryIdx, entries, firstRoundPairs) {
+  const baseOrder = [...orderByEntryIdx];
+  let bestOrder = [...orderByEntryIdx];
+  let bestCost = evaluateFirstRoundCost(bestOrder, entries, baseOrder, firstRoundPairs);
+
+  // Local search by pairwise swaps: prioritize no rematch, then same-zone, then minimal movement.
+  let improved = true;
+  while (improved) {
+    improved = false;
+    let localBestOrder = bestOrder;
+    let localBestCost = bestCost;
+
+    for (let i = 0; i < bestOrder.length - 1; i += 1) {
+      for (let j = i + 1; j < bestOrder.length; j += 1) {
+        const candidate = [...bestOrder];
+        const temp = candidate[i];
+        candidate[i] = candidate[j];
+        candidate[j] = temp;
+
+        const cost = evaluateFirstRoundCost(candidate, entries, baseOrder, firstRoundPairs);
+        if (compareCosts(cost, localBestCost) < 0) {
+          localBestCost = cost;
+          localBestOrder = candidate;
+          improved = true;
+        }
+      }
+    }
+
+    if (improved) {
+      bestOrder = localBestOrder;
+      bestCost = localBestCost;
+    }
+  }
+
+  return { order: bestOrder, cost: bestCost };
+}
+
 
 function seedingPositions(size, entries = []) {
   const baseOrder = classicSeedingPositions(size);
@@ -71,13 +174,7 @@ function seedingPositions(size, entries = []) {
   });
 
   // Find "real" match pairings (both positions are non-bye)
-  const realMatchPairs = [];
-  for (let pos = 0; pos < size; pos += 2) {
-    const pos1 = pos + 1;
-    if (!byePositions.has(pos) && !byePositions.has(pos1)) {
-      realMatchPairs.push([pos, pos1]);
-    }
-  }
+  const realMatchPairs = buildFirstRoundPairs(size, byePositions);
 
  // Build result: position for each entry
   const resultOrder = new Array(total);
@@ -184,9 +281,16 @@ function seedingPositions(size, entries = []) {
   }
 
   const finalOrder = resultOrder.filter((pos) => pos != null);
+  const optimized = optimizeFirstRoundOrder(finalOrder, ranked, realMatchPairs);
+
+  if (optimized.cost.rematches > 0) {
+    warnings.push(
+      `No fue posible evitar todos los rematches de zona en primera ronda (${optimized.cost.rematches} cruce(s)).`
+    );
+  }
 
   return {
-    order: finalOrder,
+    order: optimized.order,
     byePositions,
     warnings,
   };

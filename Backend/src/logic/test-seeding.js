@@ -90,3 +90,43 @@ console.log('\nPasses 7-pair business rules:', passesBusinessRules);
 if (!passesBusinessRules) {
   throw new Error(`Unexpected seeding for 7-pair scenario: ${JSON.stringify(seededFive.slots)}`);
 }
+
+const tenQualified = [
+  { pair_id: 101, points: 6, games_won: 12, games_lost: 6, position: 1, group_id: 1, group_name: 'A', previous_opponents: [103, 104] },
+  { pair_id: 201, points: 6, games_won: 11, games_lost: 6, position: 1, group_id: 2, group_name: 'B', previous_opponents: [202, 203] },
+  { pair_id: 301, points: 6, games_won: 10, games_lost: 6, position: 1, group_id: 3, group_name: 'C', previous_opponents: [302, 303] },
+  { pair_id: 102, points: 4, games_won: 10, games_lost: 8, position: 2, group_id: 1, group_name: 'A', previous_opponents: [101] },
+  { pair_id: 202, points: 4, games_won: 9, games_lost: 8, position: 2, group_id: 2, group_name: 'B', previous_opponents: [201, 203] },
+  { pair_id: 302, points: 4, games_won: 9, games_lost: 9, position: 2, group_id: 3, group_name: 'C', previous_opponents: [301, 303] },
+  { pair_id: 103, points: 2, games_won: 8, games_lost: 9, position: 3, group_id: 1, group_name: 'A', previous_opponents: [101, 104] },
+  { pair_id: 203, points: 2, games_won: 7, games_lost: 9, position: 3, group_id: 2, group_name: 'B', previous_opponents: [201, 202] },
+  { pair_id: 303, points: 2, games_won: 7, games_lost: 10, position: 3, group_id: 3, group_name: 'C', previous_opponents: [301, 302] },
+  { pair_id: 104, points: 0, games_won: 5, games_lost: 12, position: 4, group_id: 1, group_name: 'A', previous_opponents: [101, 103] },
+];
+
+const rankedTen = rankQualified(tenQualified, tournament);
+const seededTen = buildSlots(rankedTen);
+
+const firstRoundTen = [];
+for (let i = 0; i < seededTen.slots.length; i += 2) {
+  const left = seededTen.slots[i];
+  const right = seededTen.slots[i + 1];
+  if (left != null && right != null) {
+    firstRoundTen.push([left, right]);
+  }
+}
+
+const priorByPair = new Map(rankedTen.map((row) => [row.pair_id, new Set(row.previous_opponents || [])]));
+const rematchesInRoundOne = firstRoundTen.filter(([a, b]) => {
+  const setA = priorByPair.get(a) || new Set();
+  const setB = priorByPair.get(b) || new Set();
+  return setA.has(b) || setB.has(a);
+});
+
+console.log('\nScenario: 10 qualified into bracket of 16');
+console.log('Slots:', seededTen.slots);
+console.log('First round rematches detected:', rematchesInRoundOne.length);
+
+if (rematchesInRoundOne.length > 0) {
+  throw new Error(`Unexpected immediate rematches in 10-pair scenario: ${JSON.stringify(rematchesInRoundOne)}`);
+}

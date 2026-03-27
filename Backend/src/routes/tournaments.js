@@ -87,6 +87,26 @@ function buildProjectedQualifiedRows(tournamentId, tournament) {
     )
     .all(tournamentId);
 
+  const zoneMatches = db
+    .prepare(
+      `SELECT pair1_id, pair2_id
+       FROM matches
+       WHERE tournament_id = ?
+         AND stage = 'zona'
+         AND winner_id IS NOT NULL
+         AND pair1_id IS NOT NULL
+         AND pair2_id IS NOT NULL`
+    )
+    .all(tournamentId);
+
+  const opponentsByPair = new Map();
+  zoneMatches.forEach((m) => {
+    if (!opponentsByPair.has(m.pair1_id)) opponentsByPair.set(m.pair1_id, new Set());
+    if (!opponentsByPair.has(m.pair2_id)) opponentsByPair.set(m.pair2_id, new Set());
+    opponentsByPair.get(m.pair1_id).add(m.pair2_id);
+    opponentsByPair.get(m.pair2_id).add(m.pair1_id);
+  });
+
   const positionedRows = db
     .prepare(
       `SELECT
@@ -124,6 +144,8 @@ function buildProjectedQualifiedRows(tournamentId, tournament) {
         group_name: group.name,
         group_id: group.id,
         group_size: group.size,
+        previous_opponents:
+          actual?.pair_id != null ? [...(opponentsByPair.get(actual.pair_id) || new Set())] : [],
       });
     }
   });

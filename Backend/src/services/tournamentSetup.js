@@ -144,6 +144,26 @@ function createBracketTree(tournament) {
 
 function getQualifiedRows(tournamentId) {
   const tournament = db.prepare("SELECT * FROM tournaments WHERE id = ?").get(tournamentId);
+  const zoneMatches = db
+    .prepare(
+      `SELECT pair1_id, pair2_id
+       FROM matches
+       WHERE tournament_id = ?
+         AND stage = 'zona'
+         AND winner_id IS NOT NULL
+         AND pair1_id IS NOT NULL
+         AND pair2_id IS NOT NULL`
+    )
+    .all(tournamentId);
+
+  const opponentsByPair = new Map();
+  zoneMatches.forEach((m) => {
+    if (!opponentsByPair.has(m.pair1_id)) opponentsByPair.set(m.pair1_id, new Set());
+    if (!opponentsByPair.has(m.pair2_id)) opponentsByPair.set(m.pair2_id, new Set());
+    opponentsByPair.get(m.pair1_id).add(m.pair2_id);
+    opponentsByPair.get(m.pair2_id).add(m.pair1_id);
+  });
+
   const rows = db
     .prepare(
       `SELECT gs.pair_id, gs.points, gs.games_won, gs.games_lost, gs.position, g.size AS group_size, g.name AS group_name, g.id AS group_id
@@ -155,7 +175,11 @@ function getQualifiedRows(tournamentId) {
     .filter((r) => {
       if (r.group_size === 3) return r.position <= tournament.clasifican_de_zona_3;
       return r.position <= tournament.clasifican_de_zona_4;
-    });
+    })
+    .map((r) => ({
+      ...r,
+      previous_opponents: [...(opponentsByPair.get(r.pair_id) || new Set())],
+    }));
 
   return rankQualified(rows, tournament);
 }
