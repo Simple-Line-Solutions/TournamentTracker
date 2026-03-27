@@ -111,6 +111,10 @@ function recalcGroupStandings(groupId) {
             "UPDATE group_standings SET position = ? WHERE group_id = ? AND pair_id = ?"
           ).run(idx + 1, groupId, pairId);
         });
+      } else {
+        ordered.forEach((row, idx) => {
+          db.prepare("UPDATE group_standings SET position = ? WHERE id = ?").run(idx + 1, row.id);
+        });
       }
     } else {
       ordered.forEach((row, idx) => {
