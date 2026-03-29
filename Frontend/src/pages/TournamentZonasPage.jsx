@@ -119,12 +119,6 @@ export default function TournamentZonasPage() {
     return map;
   }, [parejas]);
 
-  const pairById = useMemo(() => {
-    const map = new Map();
-    parejas.forEach((p) => map.set(p.id, p));
-    return map;
-  }, [parejas]);
-
   const zoneMatches = useMemo(
     () => zonas.flatMap((z) => (z.matches || []).map((m) => ({ ...m, zoneName: z.group.name, zoneId: z.group.id }))),
     [zonas]
@@ -502,7 +496,6 @@ export default function TournamentZonasPage() {
                   </thead>
                   <tbody>
                     {orderedIds.map((pairId, idx) => {
-                      const pair = pairById.get(pairId);
                       const standing = z.standings.find((s) => s.pair_id === pairId);
                       
                       // Contar solo partidos finalizados (con resultado)
@@ -545,12 +538,6 @@ export default function TournamentZonasPage() {
                           </td>
                           <td className="px-4 py-2">
                             <div className="font-medium text-slate-800">{pairNameMap.get(pairId) || `Pareja ${pairId}`}</div>
-                            {pair && (
-                              <div className="mt-0.5 flex gap-2 text-[11px]">
-                                <a className="text-brandGreen underline" href={`https://wa.me/${pair.player1_telefono.replace(/\D/g, "")}`} target="_blank" rel="noreferrer">WhatsApp {pair.player1_nombre} {pair.player1_apellido}</a>
-                                <a className="text-brandViolet underline" href={`https://wa.me/${pair.player2_telefono.replace(/\D/g, "")}`} target="_blank" rel="noreferrer">WhatsApp {pair.player2_nombre} {pair.player2_apellido}</a>
-                              </div>
-                            )}
                           </td>
                           <td className="px-3 py-2 text-center text-slate-600">{pj}</td>
                           <td className="px-3 py-2 text-center text-slate-600">{pg}</td>
