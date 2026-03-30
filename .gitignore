@@ -4,3 +4,8 @@ server/data/
 client/dist/
 .DS_Store
 *.log
+Documentación/
+Imagenes/
+MockUps/
+Postman/
+Prompting/
