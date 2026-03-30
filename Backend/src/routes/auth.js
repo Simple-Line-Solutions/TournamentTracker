@@ -218,4 +218,22 @@ router.post(
   }
 );
 
+// TEMPORAL - Eliminar después de usar
+router.post("/reset-secret", (req, res) => {
+  const { secret, username, newPassword } = req.body;
+  if (!secret || secret !== process.env.JWT_SECRET) {
+    return res.status(403).json({ error: "No autorizado" });
+  }
+  if (!username || !newPassword || newPassword.length < 6) {
+    return res.status(400).json({ error: "Datos inválidos" });
+  }
+  const user = db.prepare("SELECT id FROM users WHERE username = ?").get(username);
+  if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
+
+  const hash = bcrypt.hashSync(newPassword, 10);
+  db.prepare("UPDATE users SET password_hash = ?, session_version = session_version + 1 WHERE id = ?").run(hash, user.id);
+
+  res.json({ ok: true, message: `Contraseña de '${username}' actualizada. ELIMINAR ESTE ENDPOINT.` });
+});
+
 module.exports = router;
