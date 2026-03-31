@@ -50,3 +50,20 @@ Ejemplo para una instalacion solo Americano:
 - Zonas con orden manual de posiciones.
 - Gestion de pendientes, cola de canchas, inicio de partidos y carga de resultados.
 - Dashboard de canchas con polling en frontend.
+
+## Recuperacion de acceso (produccion)
+Si se pierde la contraseña de un usuario, no se puede leer la contraseña actual porque se guarda como hash bcrypt. La salida es resetearla.
+
+Flujo recomendado:
+1. Ingresar con un usuario admin activo.
+2. Usar `PUT /api/users/:id` enviando `password` en el body para establecer una nueva clave.
+3. Confirmar login con la nueva contraseña.
+
+Si se pierde acceso administrativo total:
+1. Crear endpoint temporal de reset protegido por secreto de entorno.
+2. Deployar, usarlo una sola vez y verificar acceso.
+3. Eliminar endpoint temporal y redeployar inmediatamente.
+
+Notas de seguridad:
+- No exponer `password_hash` en ninguna respuesta API.
+- No dejar endpoints de recuperacion activos en produccion.
