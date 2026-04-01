@@ -4,12 +4,12 @@ const bcrypt = require("bcryptjs");
 const { db } = require("./connection");
 const { config } = require("../config");
 
-function runMigrations() {
-  db.exec(`
+async function runMigrations() {
+  await db.query(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,
-      executed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      executed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
 
@@ -20,55 +20,48 @@ function runMigrations() {
     .sort();
 
   for (const file of files) {
-    const exists = db
-      .prepare("SELECT id FROM schema_migrations WHERE name = ?")
-      .get(file);
-    if (exists) {
-      continue;
-    }
+    // Solo ejecutar la migración de Postgres, ignorar las de SQLite
+    const isPostgresMigration = file === "001_init_postgres.sql";
+    const isSQLiteMigration = !isPostgresMigration && file.endsWith(".sql");
+    if (isSQLiteMigration) continue;
+
+    const { rows } = await db.query(
+      "SELECT id FROM schema_migrations WHERE name = $1",
+      [file]
+    );
+    if (rows.length > 0) continue;
 
     const sql = fs.readFileSync(path.join(migrationsDir, file), "utf8");
-
-    // Some structural migrations rebuild tables referenced by FKs.
-    // In SQLite, toggling PRAGMA foreign_keys inside a transaction has no effect,
-    // so execute those migrations outside BEGIN/COMMIT with FKs temporarily disabled.
-    const needsForeignKeysOff = ["006_superadmin.sql", "007_circuit_players.sql", "008_circuit_categories.sql", "009_player_role.sql"].includes(file);
-
-    if (needsForeignKeysOff) {
-      db.pragma("foreign_keys = OFF");
-      try {
-        db.exec(sql);
-        db.prepare("INSERT INTO schema_migrations (name) VALUES (?)").run(file);
-      } finally {
-        db.pragma("foreign_keys = ON");
-      }
-      continue;
-    }
-
-    db.exec("BEGIN");
+    const client = await db.getClient();
     try {
-      db.exec(sql);
-      db.prepare("INSERT INTO schema_migrations (name) VALUES (?)").run(file);
-      db.exec("COMMIT");
+      await client.query("BEGIN");
+      await client.query(sql);
+      await client.query("INSERT INTO schema_migrations (name) VALUES ($1)", [file]);
+      await client.query("COMMIT");
+      console.log(`✓ Migración ejecutada: ${file}`);
     } catch (err) {
-      db.exec("ROLLBACK");
+      await client.query("ROLLBACK");
       throw err;
+    } finally {
+      client.release();
     }
   }
 
-  const usersCount = db.prepare("SELECT COUNT(*) as total FROM users").get().total;
-  if (usersCount === 0) {
+  // Seed: admin inicial
+  const { rows: usersRows } = await db.query("SELECT COUNT(*) as total FROM users");
+  if (parseInt(usersRows[0].total) === 0) {
     const hash = bcrypt.hashSync(config.adminPassword, 10);
-    db.prepare(
-      "INSERT INTO users (username, password_hash, role, nombre, activo) VALUES (?, ?, 'admin', ?, 1)"
-    ).run(config.adminUser, hash, config.adminName);
+    await db.query(
+      "INSERT INTO users (username, password_hash, role, nombre, activo) VALUES ($1, $2, 'admin', $3, TRUE)",
+      [config.adminUser, hash, config.adminName]
+    );
   }
 
-  // Ensure superadmin exists
-  const superadminExists = db
-    .prepare("SELECT id FROM users WHERE role = 'superadmin' LIMIT 1")
-    .get();
-  if (!superadminExists) {
+  // Seed: superadmin
+  const { rows: superRows } = await db.query(
+    "SELECT id FROM users WHERE role = 'superadmin' LIMIT 1"
+  );
+  if (superRows.length === 0) {
     let superPassword = config.superadminPassword;
     if (!superPassword) {
       const rnd = () => Math.random().toString(36).slice(2, 8);
@@ -80,10 +73,12 @@ function runMigrations() {
       );
     }
     const superHash = bcrypt.hashSync(superPassword, 10);
-    db.prepare(
-      "INSERT INTO users (username, password_hash, role, nombre, activo) VALUES (?, ?, 'superadmin', ?, 1)"
-    ).run(config.superadminUser, superHash, config.superadminName);
+    await db.query(
+      "INSERT INTO users (username, password_hash, role, nombre, activo) VALUES ($1, $2, 'superadmin', $3, TRUE)",
+      [config.superadminUser, superHash, config.superadminName]
+    );
   }
 }
 
 module.exports = { runMigrations };
+

@@ -17,24 +17,23 @@ function gamesFromMatchForPair(match, pairId) {
   return { gw, gl };
 }
 
-function recalcGroupStandings(groupId) {
-  const group = db.prepare("SELECT * FROM groups WHERE id = ?").get(groupId);
+async function recalcGroupStandings(groupId, client) {
+  const q = client || db;
+  const { rows: groupRows } = await q.query("SELECT * FROM groups WHERE id = $1", [groupId]);
+  const group = groupRows[0];
   if (!group) return { ties: [], standings: [] };
 
-  const rows = db
-    .prepare(
-      `SELECT gs.id, gs.pair_id, gs.position_override
-       FROM group_standings gs
-       WHERE gs.group_id = ?`
-    )
-    .all(groupId);
+  const { rows } = await q.query(
+    `SELECT gs.id, gs.pair_id, gs.position_override
+     FROM group_standings gs
+     WHERE gs.group_id = $1`,
+    [groupId]
+  );
 
-  const matches = db
-    .prepare(
-      `SELECT * FROM matches
-       WHERE group_id = ? AND winner_id IS NOT NULL`
-    )
-    .all(groupId);
+  const { rows: matches } = await q.query(
+    `SELECT * FROM matches WHERE group_id = $1 AND winner_id IS NOT NULL`,
+    [groupId]
+  );
 
   for (const row of rows) {
     let points = 0;
@@ -50,44 +49,37 @@ function recalcGroupStandings(groupId) {
       gamesLost += g.gl;
     }
 
-    db.prepare(
-      `UPDATE group_standings
-       SET points = ?, games_won = ?, games_lost = ?
-       WHERE id = ?`
-    ).run(points, gamesWon, gamesLost, row.id);
+    await q.query(
+      `UPDATE group_standings SET points = $1, games_won = $2, games_lost = $3 WHERE id = $4`,
+      [points, gamesWon, gamesLost, row.id]
+    );
   }
 
-  const ordered = db
-    .prepare(
-      `SELECT * FROM group_standings
-       WHERE group_id = ?`
-    )
-    .all(groupId)
-    .sort((a, b) => {
-      if (a.points !== b.points) return b.points - a.points;
-      const diffA = a.games_won - a.games_lost;
-      const diffB = b.games_won - b.games_lost;
-      if (diffA !== diffB) return diffB - diffA;
-      return a.id - b.id;
-    });
+  const { rows: allStandings } = await q.query(
+    `SELECT * FROM group_standings WHERE group_id = $1`,
+    [groupId]
+  );
+  const ordered = allStandings.sort((a, b) => {
+    if (a.points !== b.points) return b.points - a.points;
+    const diffA = a.games_won - a.games_lost;
+    const diffB = b.games_won - b.games_lost;
+    if (diffA !== diffB) return diffB - diffA;
+    return a.id - b.id;
+  });
 
-  const hasOverride = ordered.some((r) => r.position_override === 1);
+  const hasOverride = ordered.some((r) => r.position_override);
   if (!hasOverride) {
     if (group.size === 4) {
-      const winnersMatch = db
-        .prepare(
-          `SELECT * FROM matches
-           WHERE group_id = ? AND round = 'r2w'
-           LIMIT 1`
-        )
-        .get(groupId);
-      const losersMatch = db
-        .prepare(
-          `SELECT * FROM matches
-           WHERE group_id = ? AND round = 'r2l'
-           LIMIT 1`
-        )
-        .get(groupId);
+      const { rows: winnersRows } = await q.query(
+        `SELECT * FROM matches WHERE group_id = $1 AND round = 'r2w' LIMIT 1`,
+        [groupId]
+      );
+      const { rows: losersRows } = await q.query(
+        `SELECT * FROM matches WHERE group_id = $1 AND round = 'r2l' LIMIT 1`,
+        [groupId]
+      );
+      const winnersMatch = winnersRows[0];
+      const losersMatch = losersRows[0];
 
       if (winnersMatch?.winner_id && losersMatch?.winner_id) {
         const second =
@@ -106,30 +98,36 @@ function recalcGroupStandings(groupId) {
           fourth,
         ].filter(Boolean);
 
-        forced.forEach((pairId, idx) => {
-          db.prepare(
-            "UPDATE group_standings SET position = ? WHERE group_id = ? AND pair_id = ?"
-          ).run(idx + 1, groupId, pairId);
-        });
+        for (const [idx, pairId] of forced.entries()) {
+          await q.query(
+            "UPDATE group_standings SET position = $1 WHERE group_id = $2 AND pair_id = $3",
+            [idx + 1, groupId, pairId]
+          );
+        }
       } else {
-        ordered.forEach((row, idx) => {
-          db.prepare("UPDATE group_standings SET position = ? WHERE id = ?").run(idx + 1, row.id);
-        });
+        for (const [idx, row] of ordered.entries()) {
+          await q.query(
+            "UPDATE group_standings SET position = $1 WHERE id = $2",
+            [idx + 1, row.id]
+          );
+        }
       }
     } else {
-      ordered.forEach((row, idx) => {
-        db.prepare("UPDATE group_standings SET position = ? WHERE id = ?").run(idx + 1, row.id);
-      });
+      for (const [idx, row] of ordered.entries()) {
+        await q.query(
+          "UPDATE group_standings SET position = $1 WHERE id = $2",
+          [idx + 1, row.id]
+        );
+      }
     }
   }
 
-  const finalStandings = db
-    .prepare(
-      `SELECT * FROM group_standings
-       WHERE group_id = ?
-       ORDER BY CASE WHEN position IS NULL THEN 999 ELSE position END ASC, id ASC`
-    )
-    .all(groupId);
+  const { rows: finalStandings } = await q.query(
+    `SELECT * FROM group_standings
+     WHERE group_id = $1
+     ORDER BY CASE WHEN position IS NULL THEN 999 ELSE position END ASC, id ASC`,
+    [groupId]
+  );
 
   const ties = [];
   if (group.size === 3) {

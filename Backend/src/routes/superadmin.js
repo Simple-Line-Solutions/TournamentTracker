@@ -7,23 +7,24 @@ const { logAudit } = require("../services/audit");
 
 const router = express.Router();
 
-// Todas las rutas de este router requieren rol superadmin
 router.use(requireRole("superadmin"));
 
 // ─── Jugadores ────────────────────────────────────────────────────────────────
 
-router.get("/jugadores", (req, res) => {
+router.get("/jugadores", async (req, res) => {
   const q = String(req.query.q || "").trim();
-  const players = q
-    ? db
-        .prepare(
-          `SELECT * FROM players
-           WHERE nombre LIKE ? OR apellido LIKE ? OR dni LIKE ? OR email LIKE ?
-           ORDER BY apellido, nombre`
-        )
-        .all(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`)
-    : db.prepare("SELECT * FROM players ORDER BY apellido, nombre").all();
-  res.json(players);
+  let result;
+  if (q) {
+    result = await db.query(
+      `SELECT * FROM players
+       WHERE nombre ILIKE $1 OR apellido ILIKE $1 OR dni ILIKE $1 OR email ILIKE $1
+       ORDER BY apellido, nombre`,
+      [`%${q}%`]
+    );
+  } else {
+    result = await db.query("SELECT * FROM players ORDER BY apellido, nombre");
+  }
+  res.json(result.rows);
 });
 
 router.put(
@@ -43,20 +44,33 @@ router.put(
       query: z.object({}),
     })
   ),
-  (req, res) => {
+  async (req, res) => {
     const { id } = req.validated.params;
-    const { nombre, apellido, telefono, dni = null, email = null, categoria = null, fecha_nacimiento = null } = req.validated.body;
+    const { nombre, apellido, telefono, dni = null, email = null, categoria = null, fecha_nacimiento = null } =
+      req.validated.body;
 
-    const before = db.prepare("SELECT * FROM players WHERE id = ?").get(id);
+    const { rows: beforeRows } = await db.query("SELECT * FROM players WHERE id = $1", [id]);
+    const before = beforeRows[0];
     if (!before) return res.status(404).json({ error: "Jugador no encontrado" });
 
-    db.prepare(
-      `UPDATE players
-       SET nombre = ?, apellido = ?, telefono = ?, dni = ?, email = ?, categoria = ?, fecha_nacimiento = ?
-       WHERE id = ?`
-    ).run(nombre, apellido, telefono, dni, email, categoria, fecha_nacimiento, id);
+    let categoryId = null;
+    if (categoria) {
+      const { rows: catRows } = await db.query(
+        "SELECT id FROM categories WHERE code = $1",
+        [categoria]
+      );
+      categoryId = catRows[0]?.id || null;
+    }
 
-    logAudit({
+    await db.query(
+      `UPDATE players
+       SET nombre = $1, apellido = $2, telefono = $3, dni = $4, email = $5,
+           category_id = $6, fecha_nacimiento = $7
+       WHERE id = $8`,
+      [nombre, apellido, telefono, dni, email, categoryId, fecha_nacimiento, id]
+    );
+
+    await logAudit({
       actorUserId: req.user.id,
       action: "update",
       entity: "players",
@@ -71,7 +85,7 @@ router.put(
 
 // ─── Auditoría ────────────────────────────────────────────────────────────────
 
-router.get("/auditoria", (req, res) => {
+router.get("/auditoria", async (req, res) => {
   const page = Math.max(1, Number(req.query.page || 1));
   const limit = 50;
   const offset = (page - 1) * limit;
@@ -80,49 +94,53 @@ router.get("/auditoria", (req, res) => {
 
   const conditions = [];
   const whereParams = [];
+  let paramIdx = 1;
+
   if (entity) {
-    conditions.push("a.entity = ?");
+    conditions.push(`a.entity = $${paramIdx++}`);
     whereParams.push(entity);
   }
   if (action) {
-    conditions.push("a.action = ?");
+    conditions.push(`a.action = $${paramIdx++}`);
     whereParams.push(action);
   }
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
-  const total = db
-    .prepare(`SELECT COUNT(*) as c FROM audit_logs a ${where}`)
-    .get(...whereParams).c;
+  const countResult = await db.query(
+    `SELECT COUNT(*) as c FROM audit_logs a ${where}`,
+    whereParams
+  );
+  const total = Number(countResult.rows[0].c);
 
-  const rows = db
-    .prepare(
-      `SELECT a.id, a.created_at, a.action, a.entity, a.entity_id,
-              a.before_json, a.after_json,
-              u.username, u.nombre as actor_nombre
-       FROM audit_logs a
-       LEFT JOIN users u ON u.id = a.actor_user_id
-       ${where}
-       ORDER BY a.id DESC
-       LIMIT ? OFFSET ?`
-    )
-    .all(...whereParams, limit, offset);
+  const rowsResult = await db.query(
+    `SELECT a.id, a.created_at, a.action, a.entity, a.entity_id,
+            a.before_json, a.after_json,
+            u.username, u.nombre as actor_nombre
+     FROM audit_logs a
+     LEFT JOIN users u ON u.id = a.actor_user_id
+     ${where}
+     ORDER BY a.id DESC
+     LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`,
+    [...whereParams, limit, offset]
+  );
 
-  res.json({ rows, total, page, pages: Math.ceil(total / limit) });
+  res.json({ rows: rowsResult.rows, total, page, pages: Math.ceil(total / limit) });
 });
 
 // ─── Torneos ─────────────────────────────────────────────────────────────────
 
-router.post("/torneos/:id/cancelar", (req, res) => {
+router.post("/torneos/:id/cancelar", async (req, res) => {
   const id = Number(req.params.id);
-  const t = db.prepare("SELECT * FROM tournaments WHERE id = ?").get(id);
+  const { rows } = await db.query("SELECT * FROM tournaments WHERE id = $1", [id]);
+  const t = rows[0];
   if (!t) return res.status(404).json({ error: "Torneo no encontrado" });
   if (t.status === "cancelado") {
     return res.status(400).json({ error: "El torneo ya está cancelado" });
   }
 
-  db.prepare("UPDATE tournaments SET status = 'cancelado' WHERE id = ?").run(id);
+  await db.query("UPDATE tournaments SET status = 'cancelado' WHERE id = $1", [id]);
 
-  logAudit({
+  await logAudit({
     actorUserId: req.user.id,
     action: "cancelar",
     entity: "tournaments",
@@ -134,34 +152,44 @@ router.post("/torneos/:id/cancelar", (req, res) => {
   res.json({ ok: true });
 });
 
-router.post("/torneos/:id/reset", (req, res) => {
+router.post("/torneos/:id/reset", async (req, res) => {
   const id = Number(req.params.id);
-  const t = db.prepare("SELECT * FROM tournaments WHERE id = ?").get(id);
+  const { rows } = await db.query("SELECT * FROM tournaments WHERE id = $1", [id]);
+  const t = rows[0];
   if (!t) return res.status(404).json({ error: "Torneo no encontrado" });
 
-  const tx = db.transaction(() => {
-    db.prepare("DELETE FROM matches WHERE tournament_id = ?").run(id);
-    db.prepare(
-      "DELETE FROM group_standings WHERE group_id IN (SELECT id FROM groups WHERE tournament_id = ?)"
-    ).run(id);
-    db.prepare("DELETE FROM groups WHERE tournament_id = ?").run(id);
-    db.prepare(
-      "UPDATE pairs SET group_id = NULL, seed_rank = NULL WHERE tournament_id = ?"
-    ).run(id);
-    db.prepare(
-      "UPDATE tournaments SET zonas_generadas = 0, status = 'activo' WHERE id = ?"
-    ).run(id);
-  });
+  const client = await db.getClient();
+  try {
+    await client.query("BEGIN");
+    await client.query("DELETE FROM matches WHERE tournament_id = $1", [id]);
+    await client.query(
+      "DELETE FROM group_standings WHERE group_id IN (SELECT id FROM groups WHERE tournament_id = $1)",
+      [id]
+    );
+    await client.query("DELETE FROM groups WHERE tournament_id = $1", [id]);
+    await client.query(
+      "UPDATE pairs SET group_id = NULL, seed_rank = NULL WHERE tournament_id = $1",
+      [id]
+    );
+    await client.query(
+      "UPDATE tournaments SET zonas_generadas = FALSE, status = 'activo' WHERE id = $1",
+      [id]
+    );
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
 
-  tx();
-
-  logAudit({
+  await logAudit({
     actorUserId: req.user.id,
     action: "reset",
     entity: "tournaments",
     entityId: id,
     before: { status: t.status, zonas_generadas: t.zonas_generadas },
-    after: { status: "activo", zonas_generadas: 0 },
+    after: { status: "activo", zonas_generadas: false },
   });
 
   res.json({ ok: true });

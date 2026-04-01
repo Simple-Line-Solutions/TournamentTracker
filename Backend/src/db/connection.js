@@ -1,26 +1,30 @@
-const fs = require("fs");
-const path = require("path");
-const Database = require("better-sqlite3");
+const { Pool } = require("pg");
 
-// Si existe DB_PATH usamos ese (Railway)
-// sino usamos la carpeta local
-const dbPath = process.env.DB_PATH
-  ? process.env.DB_PATH
-  : path.resolve(__dirname, "../../data/torneo.db");
+const connectionString = process.env.DATABASE_URL;
 
-// Crear carpeta solo si es entorno local
-if (!process.env.DB_PATH) {
-  const dataDir = path.dirname(dbPath);
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
-  }
+if (!connectionString) {
+  throw new Error("DATABASE_URL no está configurada en las variables de entorno");
 }
 
-const db = new Database(dbPath);
+const pool = new Pool({
+  connectionString,
+  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
+  max: 10,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 5000,
+});
 
-db.pragma("journal_mode = WAL");
-db.pragma("foreign_keys = ON");
+pool.on("error", (err) => {
+  console.error("Error inesperado en cliente de pool de Postgres", err);
+});
 
-console.log("📦 DB path:", dbPath);
+console.log("📦 Conectando a Postgres via DATABASE_URL");
+
+// Wrapper para queries: db.query(sql, params) — igual interfaz que pg
+const db = {
+  query: (text, params) => pool.query(text, params),
+  getClient: () => pool.connect(),
+  pool,
+};
 
 module.exports = { db };

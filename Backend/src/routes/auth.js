@@ -29,7 +29,7 @@ router.post(
       query: z.object({}),
     })
   ),
-  (req, res) => {
+  async (req, res) => {
     if (!config.isCircuitMode) {
       return res.status(403).json({ error: "Registro de jugadores disponible solo en modo circuito" });
     }
@@ -37,67 +37,67 @@ router.post(
     const { nombre, apellido, telefono, dni, email, categoria, fecha_nacimiento, password } =
       req.validated.body;
 
-    const existingEmail = db.prepare("SELECT id FROM users WHERE username = ?").get(email.toLowerCase());
-    if (existingEmail) {
+    const { rows: existingEmailRows } = await db.query(
+      "SELECT id FROM users WHERE username = $1",
+      [email.toLowerCase()]
+    );
+    if (existingEmailRows[0]) {
       return res.status(409).json({ error: "Ya existe un usuario con ese e-mail" });
     }
 
-    const existingPlayer = db
-      .prepare("SELECT id FROM players WHERE dni = ? OR email = ?")
-      .get(dni, email.toLowerCase());
-    if (existingPlayer) {
+    const { rows: existingPlayerRows } = await db.query(
+      "SELECT id FROM players WHERE dni = $1 OR email = $2",
+      [dni, email.toLowerCase()]
+    );
+    if (existingPlayerRows[0]) {
       return res.status(409).json({ error: "Ya existe un jugador registrado con ese DNI o e-mail" });
     }
 
     const hash = bcrypt.hashSync(password, 10);
-    const tx = db.transaction(() => {
-      const userResult = db
-        .prepare(
-          "INSERT INTO users (username, password_hash, role, nombre, activo) VALUES (?, ?, 'Player', ?, 1)"
-        )
-        .run(email.toLowerCase(), hash, `${nombre} ${apellido}`.trim());
+    const client = await db.getClient();
+    let created;
+    try {
+      await client.query("BEGIN");
 
-      // Lookup category_id based on code
-      const categoryRecord = db
-        .prepare("SELECT id FROM categories WHERE code = ?")
-        .get(categoria);
-      const categoryId = categoryRecord ? categoryRecord.id : null;
+      const { rows: userRows } = await client.query(
+        "INSERT INTO users (username, password_hash, role, nombre, activo) VALUES ($1, $2, 'Player', $3, TRUE) RETURNING id",
+        [email.toLowerCase(), hash, `${nombre} ${apellido}`.trim()]
+      );
+      const userId = userRows[0].id;
 
-      const playerResult = db
-        .prepare(
-          `INSERT INTO players (
-             user_id, nombre, apellido, telefono, dni, email, category_id, fecha_nacimiento
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-        )
-        .run(
-          userResult.lastInsertRowid,
-          nombre,
-          apellido,
-          telefono,
-          dni,
-          email.toLowerCase(),
-          categoryId,
-          fecha_nacimiento
-        );
+      const { rows: catRows } = await client.query(
+        "SELECT id FROM categories WHERE code = $1",
+        [categoria]
+      );
+      const categoryId = catRows[0]?.id || null;
 
-      return {
-        userId: userResult.lastInsertRowid,
-        playerId: playerResult.lastInsertRowid,
-      };
-    });
+      const { rows: playerRows } = await client.query(
+        `INSERT INTO players (user_id, nombre, apellido, telefono, dni, email, category_id, fecha_nacimiento)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+        [userId, nombre, apellido, telefono, dni, email.toLowerCase(), categoryId, fecha_nacimiento]
+      );
+      const playerId = playerRows[0].id;
 
-    const created = tx();
-    const user = db
-      .prepare(
-        `SELECT u.id, u.username, u.role, u.nombre, u.activo, u.session_version,
-                p.id AS player_id
-         FROM users u
-         LEFT JOIN players p ON p.user_id = u.id
-         WHERE u.id = ?`
-      )
-      .get(created.userId);
+      await client.query("COMMIT");
+      created = { userId, playerId };
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
 
-    logAudit({
+    const { rows: userRows } = await db.query(
+      `SELECT u.id, u.username, u.role, u.nombre, u.activo, u.session_version,
+              p.id AS player_id
+       FROM users u
+       LEFT JOIN players p ON p.user_id = u.id
+       WHERE u.id = $1`,
+      [created.userId]
+    );
+    const user = userRows[0];
+
+    await logAudit({
       actorUserId: created.userId,
       action: "register",
       entity: "players",
@@ -128,17 +128,17 @@ router.post(
       query: z.object({}),
     })
   ),
-  (req, res) => {
+  async (req, res) => {
     const { username, password } = req.validated.body;
-    const user = db
-      .prepare(
-        `SELECT u.id, u.username, u.password_hash, u.role, u.nombre, u.activo, u.session_version,
-                p.id AS player_id
-         FROM users u
-         LEFT JOIN players p ON p.user_id = u.id
-         WHERE u.username = ?`
-      )
-      .get(username);
+    const { rows } = await db.query(
+      `SELECT u.id, u.username, u.password_hash, u.role, u.nombre, u.activo, u.session_version,
+              p.id AS player_id
+       FROM users u
+       LEFT JOIN players p ON p.user_id = u.id
+       WHERE u.username = $1`,
+      [username]
+    );
+    const user = rows[0];
 
     if (!user) return res.status(401).json({ error: "Credenciales invalidas" });
     if (!user.activo) return res.status(401).json({ error: "Usuario inactivo" });
@@ -163,9 +163,12 @@ router.post(
   }
 );
 
-router.post("/logout", requireAuth, (req, res) => {
-  db.prepare("UPDATE users SET session_version = session_version + 1 WHERE id = ?").run(req.user.id);
-  logAudit({
+router.post("/logout", requireAuth, async (req, res) => {
+  await db.query(
+    "UPDATE users SET session_version = session_version + 1 WHERE id = $1",
+    [req.user.id]
+  );
+  await logAudit({
     actorUserId: req.user.id,
     action: "logout",
     entity: "auth",
@@ -186,28 +189,31 @@ router.post(
       query: z.object({}),
     })
   ),
-  (req, res) => {
+  async (req, res) => {
     const { currentPassword, newPassword } = req.validated.body;
 
-    const user = db
-      .prepare("SELECT id, password_hash FROM users WHERE id = ?")
-      .get(req.user.id);
+    const { rows } = await db.query(
+      "SELECT id, password_hash FROM users WHERE id = $1",
+      [req.user.id]
+    );
+    const user = rows[0];
 
     const ok = bcrypt.compareSync(currentPassword, user.password_hash);
     if (!ok) return res.status(400).json({ error: "La contraseña actual es incorrecta" });
 
     const newHash = bcrypt.hashSync(newPassword, 10);
-    db.prepare(
-      "UPDATE users SET password_hash = ?, session_version = session_version + 1 WHERE id = ?"
-    ).run(newHash, req.user.id);
+    await db.query(
+      "UPDATE users SET password_hash = $1, session_version = session_version + 1 WHERE id = $2",
+      [newHash, req.user.id]
+    );
 
-    const updated = db
-      .prepare("SELECT id, username, role, nombre, activo, session_version FROM users WHERE id = ?")
-      .get(req.user.id);
+    const { rows: updatedRows } = await db.query(
+      "SELECT id, username, role, nombre, activo, session_version FROM users WHERE id = $1",
+      [req.user.id]
+    );
+    const token = signToken(updatedRows[0]);
 
-    const token = signToken(updated);
-
-    logAudit({
+    await logAudit({
       actorUserId: req.user.id,
       action: "change_password",
       entity: "auth",

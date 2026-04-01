@@ -7,8 +7,8 @@ const { logAudit } = require("../services/audit");
 
 const router = express.Router();
 
-router.get("/", (req, res) => {
-  const rows = db.prepare("SELECT * FROM payment_methods ORDER BY id DESC").all();
+router.get("/", async (req, res) => {
+  const { rows } = await db.query("SELECT * FROM payment_methods ORDER BY id DESC");
   res.json(rows);
 });
 
@@ -26,21 +26,23 @@ router.post(
       query: z.object({}),
     })
   ),
-  (req, res) => {
+  async (req, res) => {
     const { nombre, descripcion, activo } = req.validated.body;
-    const result = db
-      .prepare("INSERT INTO payment_methods (nombre, descripcion, activo) VALUES (?, ?, ?)")
-      .run(nombre, descripcion || null, activo ? 1 : 0);
+    const { rows } = await db.query(
+      "INSERT INTO payment_methods (nombre, descripcion, activo) VALUES ($1, $2, $3) RETURNING id",
+      [nombre, descripcion || null, activo]
+    );
+    const id = rows[0].id;
 
-    logAudit({
+    await logAudit({
       actorUserId: req.user.id,
       action: "create",
       entity: "payment_methods",
-      entityId: result.lastInsertRowid,
+      entityId: id,
       after: { nombre, descripcion, activo },
     });
 
-    res.status(201).json({ id: result.lastInsertRowid });
+    res.status(201).json({ id });
   }
 );
 
@@ -58,20 +60,19 @@ router.put(
       query: z.object({}),
     })
   ),
-  (req, res) => {
+  async (req, res) => {
     const id = req.validated.params.id;
     const { nombre, descripcion, activo } = req.validated.body;
-    const before = db.prepare("SELECT * FROM payment_methods WHERE id = ?").get(id);
+    const { rows: beforeRows } = await db.query("SELECT * FROM payment_methods WHERE id = $1", [id]);
+    const before = beforeRows[0];
     if (!before) return res.status(404).json({ error: "Medio no encontrado" });
 
-    db.prepare("UPDATE payment_methods SET nombre = ?, descripcion = ?, activo = ? WHERE id = ?").run(
-      nombre,
-      descripcion || null,
-      activo ? 1 : 0,
-      id
+    await db.query(
+      "UPDATE payment_methods SET nombre = $1, descripcion = $2, activo = $3 WHERE id = $4",
+      [nombre, descripcion || null, activo, id]
     );
 
-    logAudit({
+    await logAudit({
       actorUserId: req.user.id,
       action: "update",
       entity: "payment_methods",
@@ -84,13 +85,14 @@ router.put(
   }
 );
 
-router.delete("/:id", requireRole("admin"), (req, res) => {
+router.delete("/:id", requireRole("admin"), async (req, res) => {
   const id = Number(req.params.id);
-  const before = db.prepare("SELECT * FROM payment_methods WHERE id = ?").get(id);
+  const { rows: beforeRows } = await db.query("SELECT * FROM payment_methods WHERE id = $1", [id]);
+  const before = beforeRows[0];
   if (!before) return res.status(404).json({ error: "Medio no encontrado" });
 
-  db.prepare("DELETE FROM payment_methods WHERE id = ?").run(id);
-  logAudit({
+  await db.query("DELETE FROM payment_methods WHERE id = $1", [id]);
+  await logAudit({
     actorUserId: req.user.id,
     action: "delete",
     entity: "payment_methods",

@@ -5,8 +5,6 @@ const { config } = require("../config");
 
 const router = express.Router();
 
-// Todas las rutas aquí requieren auth + circuit mode + admin/asistente/superadmin roles
-
 router.use(requireRole("admin", "asistente", "superadmin"));
 
 router.use((req, res, next) => {
@@ -17,7 +15,7 @@ router.use((req, res, next) => {
 });
 
 // GET /api/jugadores?q=texto&categoria=C3,D4
-router.get("/", (req, res) => {
+router.get("/", async (req, res) => {
   try {
     const q = String(req.query.q || "").trim();
     const categoriaFilters = String(req.query.categoria || "")
@@ -44,20 +42,23 @@ router.get("/", (req, res) => {
       WHERE p.user_id IS NOT NULL
     `;
     const params = [];
+    let paramIdx = 1;
 
     if (q) {
-      sql += ` AND (p.nombre LIKE ? OR p.apellido LIKE ?)`;
+      sql += ` AND (p.nombre ILIKE $${paramIdx} OR p.apellido ILIKE $${paramIdx + 1})`;
       params.push(`%${q}%`, `%${q}%`);
+      paramIdx += 2;
     }
 
     if (categoriaFilters.length) {
-      sql += ` AND c.code IN (${categoriaFilters.map(() => "?").join(",")})`;
+      const placeholders = categoriaFilters.map(() => `$${paramIdx++}`).join(",");
+      sql += ` AND c.code IN (${placeholders})`;
       params.push(...categoriaFilters);
     }
 
     sql += " ORDER BY p.apellido, p.nombre";
 
-    const players = db.prepare(sql).all(...params);
+    const { rows: players } = await db.query(sql, params);
     res.json(players);
   } catch (err) {
     console.error("[/api/jugadores] Error:", err.message);

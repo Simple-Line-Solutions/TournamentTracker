@@ -2,7 +2,7 @@ const jwt = require("jsonwebtoken");
 const { config } = require("../config");
 const { db } = require("../db/connection");
 
-function requireAuth(req, res, next) {
+async function requireAuth(req, res, next) {
   const header = req.headers.authorization || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : null;
 
@@ -12,15 +12,15 @@ function requireAuth(req, res, next) {
 
   try {
     const payload = jwt.verify(token, config.jwtSecret);
-    const user = db
-      .prepare(
-        `SELECT u.id, u.username, u.role, u.nombre, u.activo, u.session_version,
-                p.id AS player_id
-         FROM users u
-         LEFT JOIN players p ON p.user_id = u.id
-         WHERE u.id = ?`
-      )
-      .get(payload.sub);
+    const { rows } = await db.query(
+      `SELECT u.id, u.username, u.role, u.nombre, u.activo, u.session_version,
+              p.id AS player_id
+       FROM users u
+       LEFT JOIN players p ON p.user_id = u.id
+       WHERE u.id = $1`,
+      [payload.sub]
+    );
+    const user = rows[0];
 
     if (!user) {
       return res.status(401).json({ error: "Usuario no encontrado" });
