@@ -114,7 +114,11 @@ function optimizeFirstRoundOrder(orderByEntryIdx, entries, firstRoundPairs) {
 
   // Local search by pairwise swaps: prioritize no rematch, then same-zone, then minimal movement.
   let improved = true;
-  while (improved) {
+  let iterations = 0;
+  const MAX_ITERATIONS = 100; // Prevenir loops infinitos con muchas parejas
+  
+  while (improved && iterations < MAX_ITERATIONS) {
+    iterations += 1;
     improved = false;
     let localBestOrder = bestOrder;
     let localBestCost = bestCost;
