@@ -108,6 +108,15 @@ function evaluateFirstRoundCost(orderByEntryIdx, entries, baseOrderByEntryIdx, f
 }
 
 function optimizeFirstRoundOrder(orderByEntryIdx, entries, firstRoundPairs) {
+  // Con muchas parejas, la optimización es muy costosa. Limitar solo a casos pequeños.
+  if (orderByEntryIdx.length > 16) {
+    // Para brackets grandes, devolver el orden sin optimizar
+    return {
+      order: orderByEntryIdx,
+      cost: evaluateFirstRoundCost(orderByEntryIdx, entries, orderByEntryIdx, firstRoundPairs),
+    };
+  }
+
   const baseOrder = [...orderByEntryIdx];
   let bestOrder = [...orderByEntryIdx];
   let bestCost = evaluateFirstRoundCost(bestOrder, entries, baseOrder, firstRoundPairs);
@@ -115,7 +124,7 @@ function optimizeFirstRoundOrder(orderByEntryIdx, entries, firstRoundPairs) {
   // Local search by pairwise swaps: prioritize no rematch, then same-zone, then minimal movement.
   let improved = true;
   let iterations = 0;
-  const MAX_ITERATIONS = 100; // Prevenir loops infinitos con muchas parejas
+  const MAX_ITERATIONS = 12; // Muy bajo para brackets medianos
   
   while (improved && iterations < MAX_ITERATIONS) {
     iterations += 1;
