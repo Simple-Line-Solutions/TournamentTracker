@@ -227,7 +227,7 @@ async function getBracketSyncDiagnostics(tournamentId, sync) {
   const firstRoundSummary = firstRoundSummaryRes.rows[0] || { total: 0, unresolved: 0 };
 
   const expectedQualifiedRes = await db.query(
-    `SELECT COALESCE(SUM(CASE WHEN size = 3 THEN $1 ELSE $2 END), 0) AS total
+    `SELECT COALESCE(SUM(CASE WHEN size = 3 THEN $1::integer ELSE $2::integer END), 0) AS total
      FROM groups
      WHERE tournament_id = $3`,
     [tournament?.clasifican_de_zona_3 || 0, tournament?.clasifican_de_zona_4 || 0, tournamentId]
@@ -1238,14 +1238,11 @@ router.get("/:id/cuadro", async (req, res) => {
   const tournamentId = Number(req.params.id);
   const startedAt = Date.now();
 
-  // sync debe ir primero porque escribe en la BD
-  const sync = await syncBracketFirstRound(tournamentId);
-  const syncMs = Date.now() - startedAt;
-
-  // las tres operaciones siguientes son independientes entre sí → paralelo
+  // Eliminatorias debe ser lectura pura. La sincronización ya ocurre
+  // al cerrar zonas y al cargar resultados de zona.
   const [slotLabels, diagnostics, matchRows] = await Promise.all([
     buildEliminationSlotLabels(tournamentId),
-    getBracketSyncDiagnostics(tournamentId, sync),
+    getBracketSyncDiagnostics(tournamentId),
     db.query(
       `SELECT m.*,
         (SELECT cq.court_id FROM court_queue cq WHERE cq.match_id = m.id LIMIT 1) AS queue_court_id,
@@ -1256,20 +1253,23 @@ router.get("/:id/cuadro", async (req, res) => {
       [tournamentId]
     ),
   ]);
-  const loadMs = Date.now() - startedAt - syncMs;
+  const loadMs = Date.now() - startedAt;
 
   const matches = matchRows.rows.map((row) => ({
     ...row,
     ...(slotLabels.get(row.id) || {}),
   }));
 
+  const blocked = Array.isArray(diagnostics?.reasons) && diagnostics.reasons.length > 0;
+  const message = blocked ? diagnostics.reasons[0] : null;
+
   console.log(
-    `[cuadro] torneo=${tournamentId} total=${Date.now() - startedAt}ms sync=${syncMs}ms load=${loadMs}ms matches=${matches.length}`
+    `[cuadro] torneo=${tournamentId} total=${Date.now() - startedAt}ms load=${loadMs}ms matches=${matches.length} blocked=${blocked}`
   );
 
   res.json({
-    blocked: sync?.blocked || false,
-    message: sync?.message || null,
+    blocked,
+    message,
     matches,
     diagnostics,
   });
