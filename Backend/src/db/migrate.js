@@ -20,10 +20,9 @@ async function runMigrations() {
     .sort();
 
   for (const file of files) {
-    // Solo ejecutar la migración de Postgres, ignorar las de SQLite
-    const isPostgresMigration = file === "001_init_postgres.sql";
-    const isSQLiteMigration = !isPostgresMigration && file.endsWith(".sql");
-    if (isSQLiteMigration) continue;
+    // Ejecutar únicamente migraciones de Postgres.
+    const isPostgresMigration = file === "001_init_postgres.sql" || file.includes("_postgres_");
+    if (!isPostgresMigration) continue;
 
     const { rows } = await db.query(
       "SELECT id FROM schema_migrations WHERE name = $1",

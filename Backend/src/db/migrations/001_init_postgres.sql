@@ -112,6 +112,11 @@ CREATE TABLE IF NOT EXISTS pair_players (
   UNIQUE(pair_id, player_id)
 );
 
+CREATE INDEX IF NOT EXISTS idx_pairs_tournament_id ON pairs(tournament_id);
+CREATE INDEX IF NOT EXISTS idx_pairs_group_id ON pairs(group_id);
+CREATE INDEX IF NOT EXISTS idx_pair_players_pair_id ON pair_players(pair_id);
+CREATE INDEX IF NOT EXISTS idx_pair_players_player_id ON pair_players(player_id);
+
 CREATE TABLE IF NOT EXISTS payments (
   id SERIAL PRIMARY KEY,
   tournament_id INTEGER NOT NULL,
@@ -123,6 +128,8 @@ CREATE TABLE IF NOT EXISTS payments (
   FOREIGN KEY (pair_id) REFERENCES pairs(id) ON DELETE CASCADE,
   UNIQUE(tournament_id, pair_id, player_num)
 );
+
+CREATE INDEX IF NOT EXISTS idx_payments_tournament_pair ON payments(tournament_id, pair_id);
 
 CREATE TABLE IF NOT EXISTS payment_transactions (
   id SERIAL PRIMARY KEY,
@@ -147,6 +154,8 @@ CREATE TABLE IF NOT EXISTS tournament_payment_methods (
   UNIQUE(tournament_id, payment_method_id)
 );
 
+CREATE INDEX IF NOT EXISTS idx_tournament_payment_methods_tournament_id ON tournament_payment_methods(tournament_id);
+
 CREATE TABLE IF NOT EXISTS groups (
   id SERIAL PRIMARY KEY,
   tournament_id INTEGER NOT NULL,
@@ -155,6 +164,8 @@ CREATE TABLE IF NOT EXISTS groups (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   FOREIGN KEY (tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE
 );
+
+CREATE INDEX IF NOT EXISTS idx_groups_tournament_id ON groups(tournament_id);
 
 CREATE TABLE IF NOT EXISTS matches (
   id SERIAL PRIMARY KEY,
@@ -187,6 +198,14 @@ CREATE TABLE IF NOT EXISTS matches (
   FOREIGN KEY (winner_id) REFERENCES pairs(id)
 );
 
+CREATE INDEX IF NOT EXISTS idx_matches_tournament_stage ON matches(tournament_id, stage);
+CREATE INDEX IF NOT EXISTS idx_matches_tournament_stage_round ON matches(tournament_id, stage, round);
+CREATE INDEX IF NOT EXISTS idx_matches_group_id ON matches(group_id);
+CREATE INDEX IF NOT EXISTS idx_matches_slot1_source_match_id ON matches(slot1_source_match_id);
+CREATE INDEX IF NOT EXISTS idx_matches_slot2_source_match_id ON matches(slot2_source_match_id);
+CREATE INDEX IF NOT EXISTS idx_matches_pair1_id ON matches(pair1_id);
+CREATE INDEX IF NOT EXISTS idx_matches_pair2_id ON matches(pair2_id);
+
 CREATE TABLE IF NOT EXISTS group_standings (
   id SERIAL PRIMARY KEY,
   group_id INTEGER NOT NULL,
@@ -202,6 +221,9 @@ CREATE TABLE IF NOT EXISTS group_standings (
   UNIQUE(group_id, pair_id)
 );
 
+CREATE INDEX IF NOT EXISTS idx_group_standings_group_id ON group_standings(group_id);
+CREATE INDEX IF NOT EXISTS idx_group_standings_pair_id ON group_standings(pair_id);
+
 CREATE TABLE IF NOT EXISTS courts (
   id SERIAL PRIMARY KEY,
   tournament_id INTEGER NOT NULL,
@@ -212,6 +234,8 @@ CREATE TABLE IF NOT EXISTS courts (
   UNIQUE(tournament_id, identificador)
 );
 
+CREATE INDEX IF NOT EXISTS idx_courts_tournament_id ON courts(tournament_id);
+
 CREATE TABLE IF NOT EXISTS court_queue (
   id SERIAL PRIMARY KEY,
   court_id INTEGER NOT NULL,
@@ -221,6 +245,9 @@ CREATE TABLE IF NOT EXISTS court_queue (
   FOREIGN KEY (court_id) REFERENCES courts(id) ON DELETE CASCADE,
   FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE
 );
+
+CREATE INDEX IF NOT EXISTS idx_court_queue_court_id ON court_queue(court_id);
+CREATE INDEX IF NOT EXISTS idx_court_queue_orden ON court_queue(court_id, orden);
 
 CREATE TABLE IF NOT EXISTS global_clubs (
   id SERIAL PRIMARY KEY,

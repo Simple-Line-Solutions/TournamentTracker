@@ -1236,9 +1236,11 @@ router.put("/:id/zonas/cerrar", async (req, res) => {
 
 router.get("/:id/cuadro", async (req, res) => {
   const tournamentId = Number(req.params.id);
+  const startedAt = Date.now();
 
   // sync debe ir primero porque escribe en la BD
   const sync = await syncBracketFirstRound(tournamentId);
+  const syncMs = Date.now() - startedAt;
 
   // las tres operaciones siguientes son independientes entre sí → paralelo
   const [slotLabels, diagnostics, matchRows] = await Promise.all([
@@ -1254,11 +1256,16 @@ router.get("/:id/cuadro", async (req, res) => {
       [tournamentId]
     ),
   ]);
+  const loadMs = Date.now() - startedAt - syncMs;
 
   const matches = matchRows.rows.map((row) => ({
     ...row,
     ...(slotLabels.get(row.id) || {}),
   }));
+
+  console.log(
+    `[cuadro] torneo=${tournamentId} total=${Date.now() - startedAt}ms sync=${syncMs}ms load=${loadMs}ms matches=${matches.length}`
+  );
 
   res.json({
     blocked: sync?.blocked || false,
