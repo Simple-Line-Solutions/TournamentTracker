@@ -1,5 +1,31 @@
 TT-LAF
 S1mpl3L1n3L4F
 
-postgresql://postgres.pmuognusubpbvipxdbuj:S1mpl3L1n3L4F
-@aws-0-us-west-2.pooler.supabase.com:6543/postgres?sslmode=no-verify
+postgresql://postgres.pmuognusubpbvipxdbuj:S1mpl3L1n3L4F@aws-0-us-west-2.pooler.supabase.com:6543/postgres?sslmode=no-verify
+
+Superadmin:
+simpleline
+S1mpl3L1n3
+
+
+✅ SuperAdmin creado exitosamente:
+   Username: simpleline
+   Name: Simple Line • Solutions
+   Email: simpleline.sol@gmail.com
+   Password: S1mpl3L1n3
+
+
+URL API
+🔍  Inspect: https://vercel.com/simplelinesol-9797s-projects/tt-laf-backend/4SLCXMi28t1M327vR8MEwAU61JBU [2s]
+✅  Production: https://tt-laf-backend-4nzu7v536-simplelinesol-9797s-projects.vercel.app [23s]
+
+
+
+FRONT END
+🔍  Inspect: https://vercel.com/simplelinesol-9797s-projects/tt_laf_frontend/J7ZeF88PzZ1UbuEyk9MfsTJyp1WN [1s]
+⏳  Production: https://ttlaffrontend-rbm6u8luo-simplelinesol-9797s-projects.vercel.app [1s]
+
+
+
+Vercel está con la cuenta simpleline.sol@gmail.com
+
