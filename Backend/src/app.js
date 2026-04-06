@@ -147,11 +147,16 @@ app.get("/debug/data-check", async (req, res) => {
 });
 
 app.get("/api/health", (req, res) => res.json({ ok: true }));
+const APP_VERSION = "1.1.0";
+const APP_BUILD_DATE = "2026-04-06";
+
 app.get("/api/public/app-config", (req, res) => {
 	res.json({
 		installationMode: config.installationMode,
 		circuitEnabled: config.circuitEnabled,
 		modeLabel: config.isCircuitMode ? "Circuit Mode" : "Club Mode",
+		version: APP_VERSION,
+		buildDate: APP_BUILD_DATE,
 	});
 });
 app.get("/api/jugadores/debug", async (req, res) => {

@@ -23,6 +23,7 @@ export default function AppShell() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [appModeLabel, setAppModeLabel] = useState(null);
+  const [appVersion, setAppVersion] = useState(null);
   const [installationMode, setInstallationMode] = useState(null);
   const navigate = useNavigate();
   const location = useLocation();
@@ -48,6 +49,7 @@ export default function AppShell() {
         const { data } = await api.get("/public/app-config");
         if (!ignore) {
           setAppModeLabel(data?.modeLabel || null);
+          setAppVersion(data?.version || null);
           setInstallationMode(data?.installationMode || null);
         }
       } catch {
@@ -132,7 +134,7 @@ export default function AppShell() {
                     <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-brandViolet">
                       {appModeLabel || "Loading Mode"}
                     </p>
-                    <p className="text-xs text-slate-500">Simple Line Solutions</p>
+                    <p className="text-xs text-slate-500">Simple Line Solutions{appVersion ? ` · v${appVersion}` : ""}</p>
                   </div>
                 )}
               </div>
