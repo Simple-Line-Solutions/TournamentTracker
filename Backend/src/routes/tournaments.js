@@ -1236,21 +1236,26 @@ router.put("/:id/zonas/cerrar", async (req, res) => {
 
 router.get("/:id/cuadro", async (req, res) => {
   const tournamentId = Number(req.params.id);
+
+  // sync debe ir primero porque escribe en la BD
   const sync = await syncBracketFirstRound(tournamentId);
-  const slotLabels = await buildEliminationSlotLabels(tournamentId);
-  const diagnostics = await getBracketSyncDiagnostics(tournamentId, sync);
 
-  const rows = (await db.query(
-    `SELECT m.*,
-      (SELECT cq.court_id FROM court_queue cq WHERE cq.match_id = m.id LIMIT 1) AS queue_court_id,
-      (SELECT cq.orden FROM court_queue cq WHERE cq.match_id = m.id LIMIT 1) AS queue_orden
-     FROM matches m
-     WHERE m.tournament_id = $1 AND m.stage = 'eliminatoria'
-     ORDER BY m.id ASC`,
-    [tournamentId]
-  )).rows;
+  // las tres operaciones siguientes son independientes entre sí → paralelo
+  const [slotLabels, diagnostics, matchRows] = await Promise.all([
+    buildEliminationSlotLabels(tournamentId),
+    getBracketSyncDiagnostics(tournamentId, sync),
+    db.query(
+      `SELECT m.*,
+        (SELECT cq.court_id FROM court_queue cq WHERE cq.match_id = m.id LIMIT 1) AS queue_court_id,
+        (SELECT cq.orden FROM court_queue cq WHERE cq.match_id = m.id LIMIT 1) AS queue_orden
+       FROM matches m
+       WHERE m.tournament_id = $1 AND m.stage = 'eliminatoria'
+       ORDER BY m.id ASC`,
+      [tournamentId]
+    ),
+  ]);
 
-  const matches = rows.map((row) => ({
+  const matches = matchRows.rows.map((row) => ({
     ...row,
     ...(slotLabels.get(row.id) || {}),
   }));

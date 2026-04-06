@@ -303,20 +303,28 @@ async function getZoneTieConflicts(tournamentId) {
 }
 
 async function syncBracketFirstRound(tournamentId) {
-  const { rows: tRows } = await db.query("SELECT * FROM tournaments WHERE id = $1", [tournamentId]);
+  // fetch torneo y primera ronda en paralelo
+  const [{ rows: tRows }, { rows: firstRound }] = await Promise.all([
+    db.query("SELECT * FROM tournaments WHERE id = $1", [tournamentId]),
+    db.query(
+      `SELECT id FROM matches
+       WHERE tournament_id = $1 AND stage = 'eliminatoria'
+         AND slot1_source_match_id IS NULL AND slot2_source_match_id IS NULL
+       ORDER BY id ASC`,
+      [tournamentId]
+    ),
+  ]);
   const tournament = tRows[0];
-
-  const { rows: firstRound } = await db.query(
-    `SELECT id FROM matches
-     WHERE tournament_id = $1 AND stage = 'eliminatoria'
-       AND slot1_source_match_id IS NULL AND slot2_source_match_id IS NULL
-     ORDER BY id ASC`,
-    [tournamentId]
-  );
 
   if (!firstRound.length) return;
 
-  const tieConflicts = await getZoneTieConflicts(tournamentId);
+  // fetch conflictos, clasificados y esperados en paralelo
+  const [tieConflicts, qualified, expectedQualified] = await Promise.all([
+    getZoneTieConflicts(tournamentId),
+    getQualifiedRows(tournamentId),
+    getExpectedQualifiedCount(tournamentId, tournament),
+  ]);
+
   if (tieConflicts.length > 0) {
     return {
       blocked: true,
@@ -324,9 +332,6 @@ async function syncBracketFirstRound(tournamentId) {
       tie_conflicts: tieConflicts,
     };
   }
-
-  const qualified = await getQualifiedRows(tournamentId);
-  const expectedQualified = await getExpectedQualifiedCount(tournamentId, tournament);
 
   if (qualified.length < expectedQualified) {
     return {

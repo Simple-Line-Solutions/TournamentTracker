@@ -147,7 +147,7 @@ app.get("/debug/data-check", async (req, res) => {
 });
 
 app.get("/api/health", (req, res) => res.json({ ok: true }));
-const APP_VERSION = "1.1.0";
+const APP_VERSION = "1.2.0";
 const APP_BUILD_DATE = "2026-04-06";
 
 app.get("/api/public/app-config", (req, res) => {
