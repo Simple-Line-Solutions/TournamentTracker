@@ -5,21 +5,20 @@ function seedEntries(entries) {
   const total = entries.length;
   const bracketSize = nextPowerOfTwo(total || 2);
   const result = seedingPositions(bracketSize, entries);
-  
+
   // seedingPositions returns {order, byePositions, warnings}
+  // order[entryIdx] = bracket position for that entry
   const seedOrder = Array.isArray(result) ? result : result.order;
-  const warnings = Array.isArray(result?._warnings) ? result._warnings : (result?.warnings || []);
+  const warnings = result?.warnings || [];
   const byePositions = result?.byePositions || new Set();
 
-  const byes = bracketSize - total;
   const slots = new Array(bracketSize).fill(null);
 
-  let entryIndex = 0;
-  for (let i = 0; i < seedOrder.length; i += 1) {
-    const slotIndex = seedOrder[i];
-    if (byePositions.has(slotIndex)) continue;
-    slots[slotIndex] = entryIndex < entries.length ? entries[entryIndex] : null;
-    entryIndex += 1;
+  for (let i = 0; i < total; i += 1) {
+    const bracketPos = seedOrder[i];
+    if (bracketPos != null && bracketPos < bracketSize) {
+      slots[bracketPos] = entries[i];
+    }
   }
 
   return { bracketSize, slots, byePositions, warnings };
