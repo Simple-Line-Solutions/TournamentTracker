@@ -153,7 +153,7 @@ export default function TournamentParejasPage() {
       open: true,
       pair,
       estadoObjetivo: "pendiente",
-      rows: [{ player_num: 1, payment_method_id: "", monto: "" }],
+      rows: [],
     });
   };
 
@@ -162,7 +162,7 @@ export default function TournamentParejasPage() {
       open: false,
       pair: null,
       estadoObjetivo: "pendiente",
-      rows: [{ player_num: 1, payment_method_id: "", monto: "" }],
+      rows: [],
     });
   };
 
@@ -237,12 +237,15 @@ export default function TournamentParejasPage() {
 
   const savePayments = async () => {
     if (!paymentModal.pair) return;
-    if (!mediosPago.length) {
+    if (paymentModal.rows.length > 0 && !mediosPago.length) {
       setError("No hay medios de pago disponibles. Crea al menos uno para registrar pagos.");
       return;
     }
 
-    const invalid = paymentModal.rows.some(
+    const rowsConContenido = paymentModal.rows.filter(
+      (row) => row.payment_method_id || row.monto !== ""
+    );
+    const invalid = rowsConContenido.some(
       (row) => !row.player_num || !row.payment_method_id || row.monto === "" || Number(row.monto) <= 0
     );
     if (invalid) {
@@ -254,7 +257,7 @@ export default function TournamentParejasPage() {
     setInfo("");
     try {
       const touchedPlayers = new Set();
-      for (const row of paymentModal.rows) {
+      for (const row of rowsConContenido) {
         const playerNum = Number(row.player_num);
         await api.post(`/torneos/${id}/pagos/${paymentModal.pair.id}/jugador/${Number(row.player_num)}/transaccion`, {
           payment_method_id: Number(row.payment_method_id),
@@ -271,7 +274,7 @@ export default function TournamentParejasPage() {
             })
           )
         );
-      } else {
+      } else if (touchedPlayers.size > 0) {
         await Promise.all(
           [...touchedPlayers].map((playerNum) =>
             api.put(`/torneos/${id}/pagos/${paymentModal.pair.id}/jugador/${playerNum}/estado`, {
@@ -464,9 +467,12 @@ export default function TournamentParejasPage() {
                 {[1, 2].map((playerNum) => {
                   const txs = paymentTxByPairPlayer.get(paymentKey(paymentModal.pair.id, playerNum)) || [];
                   const subtotal = txs.reduce((acc, tx) => acc + Number(tx.monto || 0), 0);
+                  const playerName = playerNum === 1
+                    ? `${paymentModal.pair.player1_nombre} ${paymentModal.pair.player1_apellido}`
+                    : `${paymentModal.pair.player2_nombre} ${paymentModal.pair.player2_apellido}`;
                   return (
                     <div key={`existing-${playerNum}`} className="mb-2 last:mb-0">
-                      <p className="text-sm font-medium text-slate-700">Jugador {playerNum} · Subtotal ${subtotal.toFixed(2)}</p>
+                      <p className="text-sm font-medium text-slate-700">{playerName} · Subtotal ${subtotal.toFixed(2)}</p>
                       {txs.length ? (
                         <div className="mt-1 space-y-1">
                           {txs.map((tx) => (
@@ -507,8 +513,8 @@ export default function TournamentParejasPage() {
               {paymentModal.rows.map((row, idx) => (
                 <div key={`tx-${idx}`} className="grid grid-cols-1 md:grid-cols-4 gap-2 items-center rounded-lg border border-slate-200 p-3 bg-slate-50">
                   <select className="input" value={row.player_num} onChange={(e) => updatePaymentRow(idx, "player_num", e.target.value)}>
-                    <option value={1}>Jugador 1</option>
-                    <option value={2}>Jugador 2</option>
+                    <option value={1}>{paymentModal.pair.player1_nombre} {paymentModal.pair.player1_apellido}</option>
+                    <option value={2}>{paymentModal.pair.player2_nombre} {paymentModal.pair.player2_apellido}</option>
                   </select>
 
                   <select className="input md:col-span-2" value={row.payment_method_id} onChange={(e) => updatePaymentRow(idx, "payment_method_id", e.target.value)}>

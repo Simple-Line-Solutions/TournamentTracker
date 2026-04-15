@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import api from "../api";
+import PageSpinner from "../components/PageSpinner";
 import { useAuthStore } from "../store/authStore";
 import { useTournamentStore } from "../store/tournamentStore";
 import "./TournamentEliminatoriasPage.css";
@@ -500,7 +501,9 @@ export default function TournamentEliminatoriasPage() {
     }
   };
 
-  if (!torneo) return <p>Cargando...</p>;
+  if (!torneo) {
+    return <PageSpinner title="Cargando eliminatorias" subtitle="Sincronizando cuadro, cruces y canchas..." />;
+  }
 
   return (
     <div className="space-y-5">

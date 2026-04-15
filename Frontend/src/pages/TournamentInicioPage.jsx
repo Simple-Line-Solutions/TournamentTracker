@@ -125,7 +125,7 @@ export default function TournamentInicioPage() {
   const montoRecaudado = useMemo(() => {
     return pagos.reduce((sum, pago) => {
       if (pago.tx_id && pago.monto) {
-        return sum + (pago.monto || 0);
+        return sum + Number(pago.monto);
       }
       return sum;
     }, 0);

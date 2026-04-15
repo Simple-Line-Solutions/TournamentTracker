@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import api from "../api";
+import PageSpinner from "../components/PageSpinner";
 import { useTournamentStore } from "../store/tournamentStore";
 import "./TournamentZonasPage.css";
 
@@ -410,7 +411,9 @@ export default function TournamentZonasPage() {
     setCollapsedZones((prev) => ({ ...prev, [zoneId]: !prev[zoneId] }));
   };
 
-  if (!torneo) return <p>Cargando...</p>;
+  if (!torneo) {
+    return <PageSpinner title="Cargando zonas" subtitle="Armando standings, partidos y posiciones..." />;
+  }
 
   return (
     <div className="zonas-page">

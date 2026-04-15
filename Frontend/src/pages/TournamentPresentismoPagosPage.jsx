@@ -9,6 +9,7 @@ export default function TournamentPresentismoPagosPage() {
   const [pagos, setPagos] = useState([]);
   const [mediosPago, setMediosPago] = useState([]);
   const [paymentForms, setPaymentForms] = useState({});
+  const [estadoSelects, setEstadoSelects] = useState({});
   const [txEdit, setTxEdit] = useState({});
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
@@ -156,14 +157,30 @@ export default function TournamentPresentismoPagosPage() {
               {[1, 2].map((num) => {
                 const key = paymentKey(p.id, num);
                 const bucket = paymentsByPairPlayer.get(key) || { estado: "sin_pago", transacciones: [] };
+                const playerName = num === 1
+                  ? `${p.player1_nombre} ${p.player1_apellido}`
+                  : `${p.player2_nombre} ${p.player2_apellido}`;
+                const estadoActual = estadoSelects[key] ?? bucket.estado;
                 return (
                   <div key={key} className="mt-3 rounded-lg bg-slate-50 p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="font-medium">Jugador {num} · Estado: {bucket.estado}</p>
-                      <div className="flex gap-2">
-                        <button className="px-2 py-1 rounded bg-slate-200" onClick={() => setEstadoPago(p.id, num, "sin_pago")}>Sin pago</button>
-                        <button className="px-2 py-1 rounded bg-amber-200" onClick={() => setEstadoPago(p.id, num, "parcial")}>Parcial</button>
-                        <button className="px-2 py-1 rounded bg-emerald-200" onClick={() => setEstadoPago(p.id, num, "pagado")}>Pagado</button>
+                      <p className="font-medium">{playerName} · Estado: {bucket.estado}</p>
+                      <div className="flex gap-2 items-center">
+                        <select
+                          className="input"
+                          value={estadoActual}
+                          onChange={(e) => setEstadoSelects((s) => ({ ...s, [key]: e.target.value }))}
+                        >
+                          <option value="sin_pago">Sin pago</option>
+                          <option value="parcial">Parcial</option>
+                          <option value="pagado">Pagado / Saldado</option>
+                        </select>
+                        <button
+                          className="btn-primary"
+                          onClick={() => setEstadoPago(p.id, num, estadoActual)}
+                        >
+                          Guardar
+                        </button>
                       </div>
                     </div>
 
