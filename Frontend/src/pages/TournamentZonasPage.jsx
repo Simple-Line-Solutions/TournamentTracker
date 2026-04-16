@@ -82,22 +82,12 @@ export default function TournamentZonasPage() {
   const finalizeButtonRefs = useRef({});
   const pendingFocusMatchRef = useRef(null);
 
-  const load = async () => {
-    const [t, z, p, c] = await Promise.all([
-      api.get(`/torneos/${id}`),
-      api.get(`/torneos/${id}/zonas`),
-      api.get(`/torneos/${id}/parejas`),
-      api.get(`/torneos/${id}/canchas`),
-    ]);
-
-    setTorneo(t.data);
-    setZonas(z.data || []);
-    setParejas(p.data || []);
-    setCanchas(c.data || []);
+  const applyZonesData = (zonesData) => {
+    setZonas(zonesData || []);
 
     const nextOrder = {};
     const nextCourtByMatch = {};
-    (z.data || []).forEach((zone) => {
+    (zonesData || []).forEach((zone) => {
       nextOrder[zone.group.id] = zone.standings.map((s) => s.pair_id);
       (zone.matches || []).forEach((match) => {
         nextCourtByMatch[match.id] = match.court_id ? String(match.court_id) : "";
@@ -107,8 +97,32 @@ export default function TournamentZonasPage() {
     setStartCourtByMatch(nextCourtByMatch);
   };
 
+  const loadCore = async () => {
+    const [t, z] = await Promise.all([
+      api.get(`/torneos/${id}`),
+      api.get(`/torneos/${id}/zonas`),
+    ]);
+
+    setTorneo(t.data);
+    applyZonesData(z.data || []);
+  };
+
+  const loadCatalogs = async () => {
+    const [p, c] = await Promise.all([
+      api.get(`/torneos/${id}/parejas`),
+      api.get(`/torneos/${id}/canchas`),
+    ]);
+
+    setParejas(p.data || []);
+    setCanchas(c.data || []);
+  };
+
+  const loadAll = async () => {
+    await Promise.all([loadCore(), loadCatalogs()]);
+  };
+
   useEffect(() => {
-    load().catch(() => setError("No se pudieron cargar las zonas"));
+    loadAll().catch(() => setError("No se pudieron cargar las zonas"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, tournamentVersion]);
 
@@ -219,7 +233,7 @@ export default function TournamentZonasPage() {
       setInfo("");
       await api.put(`/torneos/${id}/zonas/${zoneId}/posiciones`, { ordered_pair_ids });
       setInfo(`Posiciones de Zona ${zonas.find((z) => z.group.id === zoneId)?.group.name || ""} guardadas`);
-      await load();
+      await loadCore();
     } catch (err) {
       setError(err.response?.data?.error || "No se pudieron guardar posiciones");
     }
@@ -235,7 +249,7 @@ export default function TournamentZonasPage() {
       setInfo("");
       await api.put(`/torneos/${id}/zonas/cerrar`, { ordered_by_zone });
       setInfo("Zonas cerradas y cuadro eliminatorio sincronizado");
-      await load();
+      await loadCore();
     } catch (err) {
       setError(err.response?.data?.error || "No se pudieron cerrar las zonas");
     }
@@ -284,7 +298,7 @@ export default function TournamentZonasPage() {
       setInfo("");
       await api.put(`/partidos/${match.id}/resultado`, payload);
       setInfo("Resultado cargado correctamente");
-      await load();
+      await loadCore();
     } catch (err) {
       setError(err.response?.data?.error || "No se pudo cargar resultado");
     }
@@ -296,7 +310,7 @@ export default function TournamentZonasPage() {
       setInfo("");
       await api.put(`/partidos/${matchId}/wo`, { winner_id: winnerId });
       setInfo("W.O. registrado");
-      await load();
+      await loadCore();
     } catch (err) {
       setError(err.response?.data?.error || "No se pudo marcar W.O.");
     }
@@ -330,7 +344,7 @@ export default function TournamentZonasPage() {
       initializeMatchForm(match);
       pendingFocusMatchRef.current = match.id;
       setInfo("Partido iniciado correctamente");
-      await load();
+      await loadCore();
     } catch (err) {
       setError(err.response?.data?.error || "No se pudo iniciar el partido");
     }
@@ -347,7 +361,7 @@ export default function TournamentZonasPage() {
         court_id: nextCourtId ? Number(nextCourtId) : null,
       });
       setInfo(nextCourtId ? "Partido en cola correctamente" : "Cancha desasignada");
-      await load();
+      await loadCore();
     } catch (err) {
       setStartCourtByMatch((prev) => ({ ...prev, [match.id]: previousValue }));
       setError(err.response?.data?.error || "No se pudo guardar la cancha del partido");
