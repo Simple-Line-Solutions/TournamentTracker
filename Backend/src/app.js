@@ -46,7 +46,11 @@ app.use(cors({
       }
     }
   },
-  credentials: true
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  maxAge: 86400,
+  optionsSuccessStatus: 204,
 }));
 app.use(express.json());
 
@@ -147,7 +151,7 @@ app.get("/debug/data-check", async (req, res) => {
 });
 
 app.get("/api/health", (req, res) => res.json({ ok: true }));
-const APP_VERSION = "1.2.3";
+const APP_VERSION = "1.2.4";
 const APP_BUILD_DATE = "2026-04-06";
 
 app.get("/api/public/app-config", (req, res) => {
