@@ -239,7 +239,6 @@ router.put("/:id/resultado", async (req, res) => {
       }
       await recalcGroupStandings(match.group_id, client);
       if (match.round === "r1") await setZoneRound2Participants(match.group_id, client);
-      await syncBracketFirstRound(match.tournament_id, client);
     }
 
     if (match.stage === "eliminatoria") await setNextMatchParticipant(id, winner_id, client);
@@ -298,7 +297,6 @@ router.put("/:id/wo", async (req, res) => {
   if (match.group_id) {
     await recalcGroupStandings(match.group_id);
     if (match.round === "r1") await setZoneRound2Participants(match.group_id);
-    await syncBracketFirstRound(match.tournament_id);
   }
 
   if (match.stage === "eliminatoria") await setNextMatchParticipant(id, winner_id);
@@ -388,7 +386,6 @@ router.put("/:id/resultado-forzado", requireRole("superadmin"), async (req, res)
       }
       await recalcGroupStandings(match.group_id, client);
       if (match.round === "r1") await setZoneRound2Participants(match.group_id, client);
-      await syncBracketFirstRound(match.tournament_id);
     }
 
     if (match.stage === "eliminatoria") await setNextMatchParticipant(id, winner_id, client);
