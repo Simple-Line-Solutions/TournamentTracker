@@ -159,11 +159,12 @@ async function createBracketTree(tournament) {
   }
 }
 
-async function getQualifiedRows(tournamentId) {
-  const { rows: tRows } = await db.query("SELECT * FROM tournaments WHERE id = $1", [tournamentId]);
+async function getQualifiedRows(tournamentId, client) {
+  const q = client || db;
+  const { rows: tRows } = await q.query("SELECT * FROM tournaments WHERE id = $1", [tournamentId]);
   const tournament = tRows[0];
 
-  const { rows: zoneMatches } = await db.query(
+  const { rows: zoneMatches } = await q.query(
     `SELECT pair1_id, pair2_id FROM matches
      WHERE tournament_id = $1 AND stage = 'zona'
        AND winner_id IS NOT NULL AND pair1_id IS NOT NULL AND pair2_id IS NOT NULL`,
@@ -178,7 +179,7 @@ async function getQualifiedRows(tournamentId) {
     opponentsByPair.get(m.pair2_id).add(m.pair1_id);
   });
 
-  const { rows: allRows } = await db.query(
+  const { rows: allRows } = await q.query(
     `SELECT gs.pair_id, gs.points, gs.games_won, gs.games_lost, gs.position,
             g.size AS group_size, g.name AS group_name, g.id AS group_id
      FROM group_standings gs
@@ -200,8 +201,9 @@ async function getQualifiedRows(tournamentId) {
   return rankQualified(rows, tournament);
 }
 
-async function getExpectedQualifiedCount(tournamentId, tournament) {
-  const { rows: groups } = await db.query(
+async function getExpectedQualifiedCount(tournamentId, tournament, client) {
+  const q = client || db;
+  const { rows: groups } = await q.query(
     "SELECT size FROM groups WHERE tournament_id = $1",
     [tournamentId]
   );
@@ -211,8 +213,9 @@ async function getExpectedQualifiedCount(tournamentId, tournament) {
   }, 0);
 }
 
-async function getPairLabelMap(tournamentId) {
-  const { rows } = await db.query(
+async function getPairLabelMap(tournamentId, client) {
+  const q = client || db;
+  const { rows } = await q.query(
     `SELECT p.id AS pair_id,
             pl1.nombre AS p1_nombre, pl1.apellido AS p1_apellido,
             pl2.nombre AS p2_nombre, pl2.apellido AS p2_apellido
@@ -231,15 +234,16 @@ async function getPairLabelMap(tournamentId) {
   return map;
 }
 
-async function getZoneTieConflicts(tournamentId) {
-  const { rows: tRows } = await db.query(
+async function getZoneTieConflicts(tournamentId, client) {
+  const q = client || db;
+  const { rows: tRows } = await q.query(
     "SELECT id, clasifican_de_zona_3, clasifican_de_zona_4 FROM tournaments WHERE id = $1",
     [tournamentId]
   );
   const tournament = tRows[0];
   if (!tournament) return [];
 
-  const { rows } = await db.query(
+  const { rows } = await q.query(
     `SELECT gs.pair_id, gs.position, gs.position_override, gs.points,
             gs.games_won, gs.games_lost, g.name AS group_name, g.size AS group_size
      FROM group_standings gs
@@ -248,7 +252,7 @@ async function getZoneTieConflicts(tournamentId) {
     [tournamentId]
   );
 
-  const pairLabelMap = await getPairLabelMap(tournamentId);
+  const pairLabelMap = await getPairLabelMap(tournamentId, q);
   const byZone = new Map();
   rows.forEach((row) => {
     const key = row.group_name;
@@ -302,11 +306,12 @@ async function getZoneTieConflicts(tournamentId) {
   return conflicts;
 }
 
-async function syncBracketFirstRound(tournamentId) {
+async function syncBracketFirstRound(tournamentId, client) {
+  const q = client || db;
   // fetch torneo y primera ronda en paralelo
   const [{ rows: tRows }, { rows: firstRound }] = await Promise.all([
-    db.query("SELECT * FROM tournaments WHERE id = $1", [tournamentId]),
-    db.query(
+    q.query("SELECT * FROM tournaments WHERE id = $1", [tournamentId]),
+    q.query(
       `SELECT id FROM matches
        WHERE tournament_id = $1 AND stage = 'eliminatoria'
          AND slot1_source_match_id IS NULL AND slot2_source_match_id IS NULL
@@ -320,9 +325,9 @@ async function syncBracketFirstRound(tournamentId) {
 
   // fetch conflictos, clasificados y esperados en paralelo
   const [tieConflicts, qualified, expectedQualified] = await Promise.all([
-    getZoneTieConflicts(tournamentId),
-    getQualifiedRows(tournamentId),
-    getExpectedQualifiedCount(tournamentId, tournament),
+    getZoneTieConflicts(tournamentId, q),
+    getQualifiedRows(tournamentId, q),
+    getExpectedQualifiedCount(tournamentId, tournament, q),
   ]);
 
   if (tieConflicts.length > 0) {
@@ -349,14 +354,14 @@ async function syncBracketFirstRound(tournamentId) {
     const winnerId = isBye ? (pair1 || pair2) : null;
 
     if (isBye && winnerId) {
-      await db.query(
+      await q.query(
         `UPDATE matches SET pair1_id = $1, pair2_id = $2, is_bye = TRUE,
           winner_id = $3, finished_at = COALESCE(finished_at, NOW())
          WHERE id = $4`,
         [pair1, pair2, winnerId, match.id]
       );
 
-      const { rows: nextRows } = await db.query(
+      const { rows: nextRows } = await q.query(
         `SELECT * FROM matches
          WHERE (slot1_source_match_id = $1 OR slot2_source_match_id = $1) LIMIT 1`,
         [match.id]
@@ -364,13 +369,13 @@ async function syncBracketFirstRound(tournamentId) {
       const nextMatch = nextRows[0];
       if (nextMatch && !nextMatch.finished_at) {
         if (nextMatch.slot1_source_match_id === match.id) {
-          await db.query("UPDATE matches SET pair1_id = $1 WHERE id = $2", [winnerId, nextMatch.id]);
+          await q.query("UPDATE matches SET pair1_id = $1 WHERE id = $2", [winnerId, nextMatch.id]);
         } else {
-          await db.query("UPDATE matches SET pair2_id = $1 WHERE id = $2", [winnerId, nextMatch.id]);
+          await q.query("UPDATE matches SET pair2_id = $1 WHERE id = $2", [winnerId, nextMatch.id]);
         }
       }
     } else {
-      await db.query(
+      await q.query(
         `UPDATE matches SET pair1_id = $1, pair2_id = $2, is_bye = FALSE
          WHERE id = $3 AND started_at IS NULL AND finished_at IS NULL`,
         [pair1, pair2, match.id]

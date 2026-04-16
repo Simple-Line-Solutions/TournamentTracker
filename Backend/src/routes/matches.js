@@ -239,19 +239,25 @@ router.put("/:id/resultado", async (req, res) => {
       }
       await recalcGroupStandings(match.group_id, client);
       if (match.round === "r1") await setZoneRound2Participants(match.group_id, client);
-      await syncBracketFirstRound(match.tournament_id);
+      await syncBracketFirstRound(match.tournament_id, client);
     }
 
     if (match.stage === "eliminatoria") await setNextMatchParticipant(id, winner_id, client);
 
     if (match.court_id) {
-      const { rows: queueRows } = await client.query(
-        "SELECT id FROM court_queue WHERE court_id = $1 ORDER BY orden ASC",
+      await client.query(
+        `WITH ordered AS (
+           SELECT id, ROW_NUMBER() OVER (ORDER BY orden ASC, id ASC) AS new_orden
+           FROM court_queue
+           WHERE court_id = $1
+         )
+         UPDATE court_queue cq
+         SET orden = ordered.new_orden
+         FROM ordered
+         WHERE cq.id = ordered.id
+           AND cq.orden IS DISTINCT FROM ordered.new_orden`,
         [match.court_id]
       );
-      for (const [index, row] of queueRows.entries()) {
-        await client.query("UPDATE court_queue SET orden = $1 WHERE id = $2", [index + 1, row.id]);
-      }
     }
     await client.query("COMMIT");
   } catch (err) {
