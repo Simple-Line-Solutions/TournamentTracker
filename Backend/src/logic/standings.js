@@ -17,6 +17,51 @@ function gamesFromMatchForPair(match, pairId) {
   return { gw, gl };
 }
 
+function sortStandingsByPerformance(rows) {
+  return [...rows].sort((a, b) => {
+    if (a.points !== b.points) return b.points - a.points;
+    const diffA = a.games_won - a.games_lost;
+    const diffB = b.games_won - b.games_lost;
+    if (diffA !== diffB) return diffB - diffA;
+    return a.id - b.id;
+  });
+}
+
+function computeTiePairs(groupSize, orderedRows) {
+  const ties = [];
+  if (groupSize === 3) {
+    for (let i = 0; i < orderedRows.length - 1; i += 1) {
+      const a = orderedRows[i];
+      const b = orderedRows[i + 1];
+      const diffA = a.games_won - a.games_lost;
+      const diffB = b.games_won - b.games_lost;
+      if (a.points === b.points && diffA === diffB) {
+        ties.push([a.pair_id, b.pair_id]);
+      }
+    }
+  }
+  return ties;
+}
+
+async function getGroupStandingsSnapshot(groupId, client) {
+  const q = client || db;
+  const { rows: groupRows } = await q.query("SELECT * FROM groups WHERE id = $1", [groupId]);
+  const group = groupRows[0];
+  if (!group) return { ties: [], standings: [] };
+
+  const { rows: finalStandings } = await q.query(
+    `SELECT * FROM group_standings
+     WHERE group_id = $1
+     ORDER BY CASE WHEN position IS NULL THEN 999 ELSE position END ASC, id ASC`,
+    [groupId]
+  );
+
+  const orderedByPerformance = sortStandingsByPerformance(finalStandings);
+  const ties = computeTiePairs(group.size, orderedByPerformance);
+
+  return { ties, standings: finalStandings };
+}
+
 async function recalcGroupStandings(groupId, client) {
   const q = client || db;
   const { rows: groupRows } = await q.query("SELECT * FROM groups WHERE id = $1", [groupId]);
@@ -59,13 +104,7 @@ async function recalcGroupStandings(groupId, client) {
     `SELECT * FROM group_standings WHERE group_id = $1`,
     [groupId]
   );
-  const ordered = allStandings.sort((a, b) => {
-    if (a.points !== b.points) return b.points - a.points;
-    const diffA = a.games_won - a.games_lost;
-    const diffB = b.games_won - b.games_lost;
-    if (diffA !== diffB) return diffB - diffA;
-    return a.id - b.id;
-  });
+  const ordered = sortStandingsByPerformance(allStandings);
 
   const hasOverride = ordered.some((r) => r.position_override);
   if (!hasOverride) {
@@ -129,20 +168,9 @@ async function recalcGroupStandings(groupId, client) {
     [groupId]
   );
 
-  const ties = [];
-  if (group.size === 3) {
-    for (let i = 0; i < ordered.length - 1; i += 1) {
-      const a = ordered[i];
-      const b = ordered[i + 1];
-      const diffA = a.games_won - a.games_lost;
-      const diffB = b.games_won - b.games_lost;
-      if (a.points === b.points && diffA === diffB) {
-        ties.push([a.pair_id, b.pair_id]);
-      }
-    }
-  }
+  const ties = computeTiePairs(group.size, ordered);
 
   return { ties, standings: finalStandings };
 }
 
-module.exports = { recalcGroupStandings };
+module.exports = { recalcGroupStandings, getGroupStandingsSnapshot };

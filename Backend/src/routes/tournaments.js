@@ -5,7 +5,7 @@ const { config } = require("../config");
 const { validate } = require("../middleware/validate");
 const { logAudit } = require("../services/audit");
 const { createGroups, assignPairsAndGenerateZones, createBracketTree, syncBracketFirstRound } = require("../services/tournamentSetup");
-const { recalcGroupStandings } = require("../logic/standings");
+const { recalcGroupStandings, getGroupStandingsSnapshot } = require("../logic/standings");
 const { normalizeEstadoForTransactions } = require("../logic/payments");
 const { buildWOSets } = require("../logic/wo");
 const { queueMatch, removeFromQueue, reorderQueue } = require("../logic/courts");
@@ -1123,7 +1123,7 @@ router.get("/:id/zonas", async (req, res) => {
       [group.id]
     )).rows;
 
-    const calc = await recalcGroupStandings(group.id);
+    const calc = await getGroupStandingsSnapshot(group.id);
     result.push({
       group,
       matches,
