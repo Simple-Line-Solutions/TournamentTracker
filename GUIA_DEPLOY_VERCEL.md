@@ -667,6 +667,12 @@ cd "c:\Users\shadad\OneDrive - BINIT TECH\Documents\Santiago\Proyectos Copilot\T
 vercel
 ```
 
+Importante:
+
+- Si en Vercel el proyecto frontend tiene `Root Directory = Frontend`, el deploy debe dispararse desde la raiz del repo o desde el dashboard de Vercel.
+- Si ejecutas `vercel` parado dentro de `Frontend/`, entonces el `Root Directory` del proyecto en Vercel debe quedar vacio.
+- No combines `cd Frontend` con `Root Directory = Frontend`, porque Vercel buscara `Frontend` dentro de `Frontend` y fallara con "The specified Root Directory \"Frontend\" does not exist".
+
 Te hará estas preguntas:
 
 ```
@@ -702,6 +708,8 @@ vercel env add VITE_BACKEND_URL
 ```powershell
 vercel --prod
 ```
+
+Si haces el deploy desde `Frontend/`, revisa antes que el `Root Directory` del proyecto en Vercel este vacio. Si el proyecto mantiene `Root Directory = Frontend`, corre el redeploy desde la raiz del repo o usa Redeploy desde Vercel.
 
 ✅ **¡Frontend completado!**
 
@@ -1039,6 +1047,10 @@ vercel --prod
 # Re-desplegar Frontend
 cd Frontend
 vercel --prod
+
+# Nota:
+# Si el proyecto frontend en Vercel tiene Root Directory = Frontend,
+# este redeploy debe ejecutarse desde la raiz del repo o desde el dashboard.
 
 # Ver logs del Backend
 vercel logs https://tu-api.vercel.app

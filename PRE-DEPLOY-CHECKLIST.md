@@ -158,6 +158,8 @@ cd Frontend
 vercel
 ```
 
+Si en Vercel este proyecto tiene `Root Directory = Frontend`, no corras `vercel` desde `Frontend/`: haz el deploy desde la raiz del repo o deja vacio el `Root Directory` del proyecto.
+
 - [ ] Deploy exitoso
 - [ ] Copié la URL del Frontend: __________________________
 
@@ -176,6 +178,9 @@ vercel env add VITE_BACKEND_URL
 ```powershell
 vercel --prod
 ```
+
+- [ ] Si hago deploy desde `Frontend/`, el `Root Directory` en Vercel esta vacio
+- [ ] Si el `Root Directory` en Vercel es `Frontend`, hago el redeploy desde la raiz o desde el dashboard
 
 - [ ] Re-deploy exitoso
 - [ ] Frontend se ve correctamente en `https://tu-app.vercel.app`
